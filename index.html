@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>めるそく！売上管理表</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://bossanova.uk/jexcel/v4/jexcel.js"></script>
+    <link rel="stylesheet" href="https://bossanova.uk/jexcel/v4/jexcel.css" type="text/css" /> 
+    <script src="https://bossanova.uk/jsuites/v3/jsuites.js"></script>
+    <link rel="stylesheet" href="https://bossanova.uk/jsuites/v3/jsuites.css" type="text/css" />
+    <style>
+        /* 表全体 */
+        #spreadsheet{
+            font-size:12px;
+        }
+
+        /* 指定列の色変更（jsとかでちゃんと定義して処理したほうが良いかも） */
+        #spreadsheet tbody.draggable td[data-X="0"],
+        #spreadsheet tbody.draggable td[data-X="5"],
+        #spreadsheet tbody.draggable td[data-X="11"],
+        #spreadsheet tbody.draggable td[data-X="12"]  {
+            color:#000;
+            background-color: #ff9;
+        }
+    </style>
+
+    <script>
+        // jExcelオブジェクト変数
+        var jExcelsheetObj = null;
+
+        // 取引先データ
+        var statusList=[
+            {"id": "10000001", "name": "配送前"},
+            {"id": "10000002", "name": "受取評価待ち"},
+            {"id": "10000003", "name": "配送済"},
+        ];
+
+        // 商品データ
+        var productList=[
+            {"id": "00000001", "name": "商品Ａ"},
+            {"id": "00000002", "name": "商品Ｂ"},
+            {"id": "00000003", "name": "商品Ｃ"},
+            {"id": "00000004", "name": "商品Ｄ"},
+            {"id": "00000005", "name": "商品Ｅ"},
+            {"id": "00000006", "name": "商品Ｆ"}
+        ];
+
+        // 表示データ
+        var sheetData = [
+          { 
+            "No": "1"
+            ,"registeredDate": "2020-12-08"
+            , "product": "00000001"
+            , "salesUnitPrice": "2000"
+            , "amount": "4"
+            , "salesSumPrice": "7000"
+            , "cost": "4500"
+            , "shippingFee": "250"
+            , "shippedDate": "2020-12-10"
+            , "platformFee": "330"
+            , "otherFee": "0"
+            , "profit":"1000"
+            , "profitRate":"5%"
+            , "status":"販売済み"
+            , "remarks": "発送遅延あり"
+          } //１行目
+          ,{ 
+            "selesDate": "2020-12-19"
+          } //２行目
+        ];
+
+        // ページ読み込み時
+        window.addEventListener("load", function(){
+
+            /** 
+            * セルの値が変更された場合
+            * @param instance:編集されたタグのインスタンス(使用していない)
+            * @param cell:編集されたタグの情報(使用していない)
+            * @param x:列のインデックス
+            * @param y:行のインデックス 
+            * @param value:編集されたタグの内容(使用していない)
+            */
+            const cellChanged = function(instance, cell, x, y, value) {
+
+                // 合計処理を実行するカラムインデックス
+                const executeCalcSumDataColomIdx = ["3","4","7"];
+
+                beforeChangeExcute();
+                // 合計処理を実行するカラム番号の場合
+                if(executeCalcSumDataColomIdx.indexOf(x) >= 0){
+
+                    // 計算データ取得
+                    let calcData = calcSumData(y, x);
+
+                    if(calcData){
+                        // 計算データ設定
+                        jExcelsheetObj.setRowData(y, calcData);
+                    }
+                }
+                afterChangeExcute();
+            }
+
+            /** 
+            * 合計計算ロジック(指定行の合計した数値を計算する)
+            * @param rowIdx:行のインデックス 
+            * @param colomIdx:列のインデックス(デフォルト-1のときは、処理実行)
+            */
+            const calcSumData = function(rowIdx){
+
+                // 余りの行は、処理しない
+                if(rowIdx >= jExcelsheetObj.rows.length - jExcelsheetObj.options.minSpareRows) return null;
+
+                // 行のデータを取得
+                rowData = jExcelsheetObj.getRowData(rowIdx);
+
+                try{
+
+                    /** 設定している値で計算(インデックスはリテラルじゃなくて、ちゃんと定義したほうが良い) */
+                    // 売上金額 = 数量 × 売上単価
+                    rowData[5] = chgStrToInt(rowData[3]) * chgStrToInt(rowData[4]);
+                    // 消費税 = 売上金額 × 税率（定義してね）
+                    rowData[11] = rowData[5] - rowData[6] - rowData[7] - rowData[9] - rowData[10];
+
+                    // rowData[6] = rowData[5] * 0.1;
+                    // 仕入金額 = 数量 × 仕入単価
+                    //rowData[8] = chgStrToInt(rowData[3]) * chgStrToInt(rowData[7]);
+                    // 利益 = 売上金額 ー 仕入金額
+                    //rowData[9] = rowData[5] - rowData[8];
+                    // 利益率 = 利益 ÷ 売上金額
+                    rowData[12] = Math.round(rowData[11] / rowData[5] * 100) + "%";
+
+                }catch(e){
+                    console.log(e);
+                    // エラーが出る前のものまで返す
+                    return rowData;
+                }
+                return rowData;
+            }
+
+            /** 
+            * セル変更処理実行処理前ロジック
+            */
+            const beforeChangeExcute = function(){
+
+                // 変更ロジック無効
+                jExcelsheetObj.options.onchange = null;
+                // 読み込み専用無効(無効にしないと、プログラムでも編集できない)
+                jExcelsheetObj.options.columns[5].readOnly = false;
+                jExcelsheetObj.options.columns[11].readOnly = false;
+                jExcelsheetObj.options.columns[12].readOnly = false;
+                // 読み込み専用の反映
+                jExcelsheetObj.refresh();
+            }
+            /** 
+            * 処理変更処理実行処理後ロジック
+            */
+            const afterChangeExcute = function(){
+                // 変更ロジック有効
+                jExcelsheetObj.options.onchange = cellChanged;
+                // 読み込み専用有効
+                jExcelsheetObj.options.columns[5].readOnly = true;
+                jExcelsheetObj.options.columns[11].readOnly = true;
+                jExcelsheetObj.options.columns[12].readOnly = true;
+                // 読み込み専用の反映
+                jExcelsheetObj.refresh();
+            }
+
+            // 変換メソッド（もう少し良いやり方が、、
+            const chgStrToInt = function(strNum){
+                return parseInt(strNum.replace(/,/, ''));
+            }
+
+            /** 初期処理開始 */
+            // シートの領域取得
+            var spArea = document.getElementById('spreadsheet');
+
+            // jExcelオブジェクト生成
+            jExcelsheetObj = jexcel(spArea, {
+                data: sheetData, //設定データ
+                minSpareRows: 1, //余り行
+                columns: [
+                    { type: "numeric", title:"No", width:30, align: "right" ,mask:"#,##", readOnly:true},
+                    { type: "calendar", title:"出品日", width:80, options: { format:"YYYY-MM-DD" }},
+                    { type: "autocomplete", title:"商品名", width:160 , align: "left", source: productList, multiple:false },
+                    { type: "numeric", title:"販売価格", width:60, align: "right" ,mask:"#,##" },
+                    { type: "numeric", title:"数量", width:40, align: "right" ,mask:"#,##" },
+                    { type: "numeric", title:"合計価格", width:80, align: "right" ,mask:"#,##", readOnly:true },
+                    { type: "numeric", title:"原価", width:80, align: "right" ,mask:"#,##"},
+                    { type: "numeric", title:"配送料", width:80, align: "right" ,mask:"#,##"},
+                    { type: "calendar", title:"販売日", width:80, options: { format:"YYYY-MM-DD" }},
+                    { type: "numeric", title:"手数料", width:80, align: "right" ,mask:"#,##" },
+                    { type: "numeric", title:"その他経費", width:80, align: "right" ,mask:"#,##"},
+                    { type: "numeric", title:"利益", width:80 , align: "right" ,mask:"#,##", readOnly:true},
+                    { type: "numeric", title:"利益率", width:60, align: "right" ,readOnly:true},
+                    { type: "autocomplete", title:"ステータス", width:100 , align: "left", source: statusList, multiple:false },
+                    { type: "text", title:"備考", width:120, align: "left" },
+                ], //列定義
+                tableOverflow:true,    // trueの場合は、領域以上になるとスクロールを表示
+                tableHeight:'200px',   // 高さ
+                tableWidth:'98vw',     // 幅
+                onchange: cellChanged, // 変更時のロジック
+                allowDeleteColumn: false,       // 列削除ＮＧ
+                allowInsertColumn: false,       // 列追加ＮＧ
+                allowManualInsertColumn: false, // 列追加ＮＧ
+                allowRenameColumn: false,       // 列名変更
+            });
+
+            /** 初回データの計算ロジック */
+            // 変更前メソッドを実行
+            beforeChangeExcute();
+            // データ(行)数取得
+            let allDataRows = jExcelsheetObj.rows.length;
+            // データ(行)数ループ
+            for(let idx=0; idx<allDataRows;idx++){
+                // 計算データ取得
+                let calcData = calcSumData(idx);
+
+                if(calcData){
+                    // 計算データ設定
+                    jExcelsheetObj.setRowData(idx, calcData);
+                }
+
+            }
+            // 変更後メソッドを有効にする
+            afterChangeExcute();
+
+            // ヘッダーの中央寄せ
+            var spHeaders = document.querySelectorAll("#spreadsheet thead.resizable td");
+            for(let idx = 0; idx<spHeaders.length;idx++){
+                spHeaders[idx].style.textAlign="center";
+            }
+
+            // 登録ボタン
+            document.getElementById("regist").addEventListener("click", function(){
+                // 全データ取得
+                var allData = jExcelsheetObj.getData();
+
+                // 取得したデータでajaxで指定URLにpostとかする
+                // commonAjax(url, allData);
+            });
+
+        });
+    </script>
+</head>
+<body>
+<h1>売上管理</h1>
+<div id="spreadsheet"></div>
+<div><input type="button" value="登録" id="regist"></div>
+
+<form action="https://www.paypal.com/cgi-bin/webscr" method="post" target="_top">
+    <input type="hidden" name="cmd" value="_s-xclick">
+    <input type="hidden" name="hosted_button_id" value="2JQV269CGVL22">
+    <input type="image" src="https://www.paypalobjects.com/ja_JP/JP/i/btn/btn_subscribeCC_LG.gif" border="0" name="submit" alt="PayPal - オンラインでより安全・簡単にお支払い">
+    <img alt="" border="0" src="https://www.paypalobjects.com/ja_JP/i/scr/pixel.gif" width="1" height="1">
+</form>
+    
+
+
+</body>
+</html>
